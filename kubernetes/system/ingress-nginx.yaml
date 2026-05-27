@@ -1,0 +1,24 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: ingress-nginx
+  namespace: kube-system
+spec:
+  chart: ingress-nginx
+  repo: https://kubernetes.github.io/ingress-nginx
+  targetNamespace: kube-system
+  valuesContent: |
+    controller:
+      # Automatically process ingress resources that do not specify an ingress class
+      watchIngressWithoutClass: true
+      
+      # Request an external load-balancer IP from MetalLB
+      service:
+        type: LoadBalancer
+      
+      # Optimize resource footprints for local virtual nodes
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 90Mi

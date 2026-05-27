@@ -1,0 +1,89 @@
+---
+- name: Prepare Local Storage Disks on All Nodes
+  hosts: k8s_nodes
+  become: yes
+  vars:
+    storage_device: "/dev/sdb"
+    mount_path: "/mnt/data"
+
+  tasks:
+    - name: Format the secondary disk as ext4
+      filesystem:
+        fstype: ext4
+        dev: "{{ storage_device }}"
+        force: no  # Does not overwrite existing filesystems
+
+    - name: Create mount directory
+      file:
+        path: "{{ mount_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mount the secondary disk to /mnt/data
+      mount:
+        path: "{{ mount_path }}"
+        src: "{{ storage_device }}"
+        fstype: ext4
+        state: mounted
+
+    - name: Create subfolders for MinIO multi-drive configuration
+      file:
+        path: "{{ mount_path }}/{{ item }}"
+        state: directory
+        mode: '0777'
+      loop:
+        - "1"
+        - "2"
+
+- name: Deploy Kubernetes Services and Core Infrastructure
+  hosts: orbit-control-01
+  become: yes
+
+  tasks:
+    - name: Ensure manifests directory exists
+      file:
+        path: /var/lib/rancher/k3s/server/manifests
+        state: directory
+        mode: '0755'
+
+    - name: Copy Cilium CNI Manifest to k3s manifests folder
+      copy:
+        src: ../kubernetes/system/cilium.yaml
+        dest: /var/lib/rancher/k3s/server/manifests/cilium.yaml
+        mode: '0644'
+
+    - name: Copy MetalLB Operator Manifest to k3s manifests folder
+      copy:
+        src: ../kubernetes/system/metallb.yaml
+        dest: /var/lib/rancher/k3s/server/manifests/metallb.yaml
+        mode: '0644'
+
+    - name: Copy NGINX Ingress Controller Manifest to k3s manifests folder
+      copy:
+        src: ../kubernetes/system/ingress-nginx.yaml
+        dest: /var/lib/rancher/k3s/server/manifests/ingress-nginx.yaml
+        mode: '0644'
+
+    - name: Copy MinIO S3 Storage Manifest to k3s manifests folder
+      copy:
+        src: ../kubernetes/apps/minio.yaml
+        dest: /var/lib/rancher/k3s/server/manifests/minio.yaml
+        mode: '0644'
+
+    - name: Wait for MetalLB CRD to be registered
+      command: kubectl get crd ipaddresspools.metallb.io
+      register: crd_check
+      until: crd_check.rc == 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    - name: Copy and Apply MetalLB Configuration (IPPool and L2 Advertisement)
+      copy:
+        src: ../kubernetes/system/metallb-config.yaml
+        dest: /var/lib/rancher/k3s/server/manifests/metallb-config.yaml
+        mode: '0644'
+
+    - name: Apply MetalLB Pool Configuration manually to avoid race condition
+      command: kubectl apply -f /var/lib/rancher/k3s/server/manifests/metallb-config.yaml
+      changed_when: true

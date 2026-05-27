@@ -1,0 +1,13 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: metallb
+  namespace: kube-system
+spec:
+  chart: metallb
+  repo: https://metallb.github.io/metallb
+  targetNamespace: kube-system
+  # Wait for CRDs to be fully ready before deploying
+  valuesContent: |
+    # No custom values needed for the operator deployment.
+    # IP pools and advertisements are configured via custom resources.

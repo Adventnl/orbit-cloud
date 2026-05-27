@@ -1,0 +1,38 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  # We use Ubuntu 22.04 LTS (Jammy Jellyfish) as the base operating system.
+  config.vm.box = "ubuntu/jammy64"
+  # Increase boot timeout to accommodate slower VM startup
+  config.vm.boot_timeout = 600
+
+  # Sync the project root to /vagrant inside the VMs
+  config.vm.synced_folder "../", "/vagrant"
+  # Removed disabled synced folder line
+
+
+  # Multi-node loop to declare 3 control-plane nodes.
+  (1..3).each do |i|
+    config.vm.define "orbit-control-0#{i}" do |node|
+      node.vm.hostname = "orbit-control-0#{i}"
+      
+      # Establish a host-only private network interface for internal communication.
+      # This mimics dedicated backplane cabling on physical servers.
+      node.vm.network "private_network", ip: "192.168.56.1#{i}"
+      
+      node.vm.provider "virtualbox" do |vb|
+        vb.memory = 3072  # 3GB RAM (Minimum for control plane + container workloads)
+        vb.cpus = 2       # 2 vCPUs for stable scheduling
+        vb.name = "orbit-control-0#{i}"
+        
+        # Ensure VMs use the host's DNS settings for internet access
+        vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+      end
+
+      # Attach a secondary 10GB raw block device to act as the raw cluster disk.
+      # MinIO will consume this drive directly to build our S3-compatible SAN.
+      node.vm.disk :disk, size: "10GB", name: "minio-disk"
+    end
+  end
+end

@@ -1,0 +1,62 @@
+---
+- name: Deploy HA Kubernetes Cluster (k3s)
+  hosts: k8s_nodes
+  become: yes
+  vars:
+    k3s_token: "orbitcloudclustersecrettoken12345"  # Pre-shared cluster join token
+    first_master_ip: "192.168.56.11"                # orbit-control-01 IP
+
+  tasks:
+    - name: Check if k3s is already installed
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_installed
+
+    # 1. Initialize cluster on the first master node
+    - name: Initialize k3s Cluster on orbit-control-01 (Seed Node)
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+          --cluster-init \
+          --token {{ k3s_token }} \
+          --node-ip={{ ansible_host }} \
+          --flannel-backend=none \
+          --disable=flannel \
+          --disable=servicelb \
+          --disable=traefik \
+          --write-kubeconfig-mode=644" sh -
+      when: 
+        - inventory_hostname == "orbit-control-01"
+        - not k3s_installed.stat.exists
+
+    # 2. Wait for the seed node API server to become ready
+    - name: Wait for k3s API server to start on orbit-control-01
+      wait_for:
+        host: "{{ first_master_ip }}"
+        port: 6443
+        delay: 5
+        timeout: 120
+      when: inventory_hostname != "orbit-control-01"
+
+    # 3. Join the remaining master nodes to the control plane
+    - name: Join orbit-control-02 and orbit-control-03 to the Control Plane
+      shell: |
+        curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+          --server https://{{ first_master_ip }}:6443 \
+          --token {{ k3s_token }} \
+          --node-ip={{ ansible_host }} \
+          --flannel-backend=none \
+          --disable=flannel \
+          --disable=servicelb \
+          --disable=traefik \
+          --write-kubeconfig-mode=644" sh -
+      when:
+        - inventory_hostname != "orbit-control-01"
+        - not k3s_installed.stat.exists
+
+    # 4. Enable kubectl auto-completion on all nodes for convenience
+    - name: Add kubectl autocompletion to bashrc
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/.bashrc"
+        line: "source <(kubectl completion bash)"
+        state: present
+        create: yes

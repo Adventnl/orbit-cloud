@@ -1,0 +1,36 @@
+{
+  "name": "orbit-cloud-setup-wizard",
+  "version": "1.0.0",
+  "description": "One‑click installer for Orbit‑Cloud (prereqs, UI build, cluster, service).",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "author": "OrbitCloud",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^24.8.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "framer-motion": "^11.0.0"
+  },
+  "build": {
+    "appId": "com.orbitcloud.wizard",
+    "productName": "Orbit Cloud Setup Wizard",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/test{,/**}",
+      "!**/*.md"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    }
+  }
+}

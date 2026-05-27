@@ -1,0 +1,27 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  chart: cilium
+  repo: https://helm.cilium.io/
+  targetNamespace: kube-system
+  bootstrap: true
+  valuesContent: |
+    ipam:
+      mode: "cluster-pool"
+      operator:
+        clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]
+    
+    # Scale down operator replicas to 1 for our minimalist 3-node cluster
+    operator:
+      replicas: 1
+    
+    # Direct eBPF routing (kube-proxy replacement)
+    kubeProxyReplacement: true
+    k8sServiceHost: 192.168.56.11
+    k8sServicePort: 6443
+    
+    # Enable host-routing for performance
+    tunnelMode: "vxlan"

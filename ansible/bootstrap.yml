@@ -1,0 +1,95 @@
+---
+- name: Bootstrap Base OS on Bare-Metal Nodes
+  hosts: k8s_nodes
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Ensure correct hostname is set
+      hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Populate /etc/hosts with internal IP mappings
+      lineinfile:
+        path: /etc/hosts
+        regexp: ".*{{ item }}$"
+        line: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+        state: present
+      loop: "{{ groups['k8s_nodes'] }}"
+
+    - name: Install required system packages
+      apt:
+        name:
+          - curl
+          - sudo
+          - tar
+          - iptables
+          - socat
+          - conntrack
+          - util-linux
+          - udev
+          - apparmor
+          - apparmor-utils
+        state: present
+        update_cache: yes
+
+    - name: Disable SWAP immediately (Kubernetes requirement)
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+      changed_when: true
+
+    - name: Disable SWAP in /etc/fstab (persist across reboots)
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+.*)$'
+        replace: '# \1'
+
+    - name: Configure kernel modules for container networking
+      copy:
+        content: |
+          overlay
+          br_netfilter
+        dest: /etc/modules-load.d/k8s.conf
+        mode: '0644'
+
+    - name: Load overlay module
+      modprobe:
+        name: overlay
+        state: present
+
+    - name: Load br_netfilter module
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Configure sysctl parameters for Kubernetes networking
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+        state: present
+        reload: yes
+      loop:
+        - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { key: 'net.ipv4.ip_forward', value: '1' }
+
+    - name: Configure UFW firewall for private backplane network
+      block:
+        - name: Allow all traffic on the private cluster interface
+          ufw:
+            rule: allow
+            interface: eth1  # Default private interface on Vagrant Ubuntu boxes
+            direction: in
+          
+        - name: Allow SSH on public interface for management
+          ufw:
+            rule: allow
+            port: '22'
+            proto: tcp
+
+        - name: Enable UFW firewall
+          ufw:
+            state: enabled
+            policy: deny
+      ignore_errors: yes  # Prevent blocking if interface naming differs on target systems
