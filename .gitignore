@@ -17,3 +17,4 @@ ansible/fact_cache/
 .idea/
 .vscode/
 Thumbs.db
+node_modules/
